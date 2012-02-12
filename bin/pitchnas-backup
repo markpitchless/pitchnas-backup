@@ -144,6 +144,14 @@ if [ -z "$flock" ] ; then
   exec env flock=1 flock $lockopts $0 "$@"
 fi
 
+RSYNC_TARGET="$RSYNC_HOST::$RSYNC_MODULE"
+
+# Tunnel the connection over ssh. Using the (passwordless) key.
+# Needs to be done before any calls to rsync
+if [ ! -z "$IDENTITY" ]; then
+    export RSYNC_CONNECT_PROG="ssh $RSYNC_USER@$RSYNC_HOST -T -i $IDENTITY nc localhost 873"
+fi
+
 # Log after pid check to avoid double starting log line as we exec
 info Starting backup
 
@@ -167,22 +175,13 @@ if [ ! -r $EXCLUDES_FILE ]; then
 fi
 
 # Is our target rsync daemon ready to play?
+info $RSYNC_CMD "$RSYNC_HOST::"
 if $RSYNC_CMD "$RSYNC_HOST::" | grep -q "$RSYNC_MODULE"; then
     info Using $RSYNC_HOST::$RSYNC_MODULE
 else
     give_up "Can't connect to $RSYNC_HOST::$RSYNC_MODULE. Maybe host or network down, authentication failure?"
 fi
 
-#
-# Setup
-#
-
-RSYNC_TARGET="$RSYNC_HOST::$RSYNC_MODULE"
-
-# Tunnel the connection over ssh. Using the (passwordless) key.
-if [ ! -z "$IDENTITY" ]; then
-    export RSYNC_CONNECT_PROG="ssh $RSYNC_USER@$RSYNC_HOST -T -i $IDENTITY nc localhost 873"
-fi
 
 #
 # Pre backup scripts
