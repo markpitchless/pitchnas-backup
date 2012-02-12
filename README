@@ -1,0 +1,16 @@
+*******************
+* Pitchnas Backup *
+*******************
+
+Bash script for backing up a machine using rsync to an rsync daemon, optionally
+using a ssh tunnel. I use this for backing up linux servers and desktops to a
+box at home running the excellent FreeNAS (http://www.freenas.org/).
+
+Intentionally doesn't doing anything fancy with rsync and cp to create
+incremental backups (a la rsnapshot), the target machine is expected to do
+that, with FreeNAS this is done using ZFS snapshots.
+
+hth,
+markp
+--
+
