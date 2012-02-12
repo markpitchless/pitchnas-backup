@@ -1,4 +1,14 @@
 2012-02-12  Mark Pitchless  <markpitchless@gmail.com>
 
+	VERSION: 0.1.1
+
+	* Fix bug when using indentity file.  Wasn't using the shh tunnel for the
+	pre-flight check on the rsync daemon.
+
+
+2012-02-12  Mark Pitchless  <markpitchless@gmail.com>
+
+	VERSION: 0.1.0
+
 	* pitchnas-backup: initial version.
 
