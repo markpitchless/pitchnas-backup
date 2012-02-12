@@ -4,9 +4,11 @@ if [ -z "$PREFIX" ]; then
     PREFIX="/usr/local"
 fi
 
-install -d "$PREFIX/bin"
-install -d "$PREFIX/etc"
-install -d "$PREFIX/etc/pre.d"
+install_opt="-v"
 
-install bin/* "$PREFIX/bin"
-install -m 644 etc/config.sample "$PREFIX/etc/"
+install $install_opt -d "$PREFIX/bin"
+install $install_opt -d "$PREFIX/etc"
+install $install_opt -d "$PREFIX/etc/pre.d"
+
+install $install_opt bin/* "$PREFIX/bin"
+install $install_opt -m 644 etc/config.sample "$PREFIX/etc/"
