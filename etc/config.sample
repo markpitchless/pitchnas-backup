@@ -1,0 +1,28 @@
+# vim: ft=sh
+# Backup config sourced by pitchnas-backup
+# Commented out configs show defaults.
+
+# Target host for the backup, where we expect to find an rsync daemon
+RSYNC_HOST=nas.example.org
+
+# Module name. ie $RSYNC_HOST::$RSYNC_MODULE is the dst we give to rsync
+#RSYNC_MODULE=$(hostname -s)
+
+# User for ssh connect to rsync daemon
+RSYNC_USER=backup
+
+# ssh private key that gives RSYNC_USER access. Don't set to connect to rsync
+# direct.
+# Setting to a key file path, that must be password less or loaded into an agent,
+# causes the script to connnect to the rsync daemon using ssh as a
+# tunnel.e.g. IDENTITY=/root/.ssh/id_nas_backup_rsa
+# The RSYNC_USER at the remote end must be able to run nc and the rsync
+# module will need to except connections from localhost.
+# This allows you to then denie direct access to the rsync daemon, you could
+# further secure the ssh connection by using a locked down ssh user (a good
+# idea with passwordless keys). eg add in authorized_keys
+# command="nc localhost 873",from="23.23.23.23",no-agent-forwarding,no-port-forwarding,no-pty,no-X11-forwarding ssh-rsa A3BNazC3k...MAGAtpTBP10 foo
+#IDENTITY=
+
+#LOCK_FILE="/tmp/pitchnas-backup.lock"
+

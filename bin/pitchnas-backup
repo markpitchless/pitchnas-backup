@@ -1,0 +1,228 @@
+#!/bin/bash
+
+#
+# Mark Pitchless backup script to rsync to pitchnas
+#
+# Backs up to the rsync daemon over an ssh tunnel.
+#
+# TODO:
+# * Log rsync output to dated rotated file, then current log sumerises runs
+#   * Parse the finish line to report in the log. ie
+#     [Mon Nov 21 03:46:00 GMT 2011] (10361) Finished backup - OK - sent 19.48M bytes  received 77.24K bytes  136.29K bytes/sec  total size is 664.72G  speedup is 33986.61
+
+
+# Where we can find config files and scripts
+case $(uname) in
+    Linux)
+        CONFDIR=/etc/pitchnas-backup
+        RSYNC_CMD=/usr/bin/rsync
+    ;;
+    *)
+        CONFDIR=/usr/local/etc/pitchnas-backup
+        RSYNC_CMD=/usr/local/bin/rsync
+    ;;
+esac
+
+LOCK_FILE="/tmp/pitchnas-backup.lock"
+
+# Target host for the backup.
+RSYNC_HOST=localhost
+
+# Module name. ie $RSYNC_HOST::$RSYNC_MODULE is the dst we give to rsync
+RSYNC_MODULE=$(hostname -s)
+
+# User for ssh connect to rsync daemon
+RSYNC_USER=backup
+
+# ssh private key that gives RSYNC_USER access. Must be password less or loaded
+# into an agent.  Expected to run nc connected to the rsync daemon. eg in
+# authorized_keys
+# command="nc localhost 873",from="23.23.23.23",no-agent-forwarding,no-port-forwarding,no-pty,no-X11-forwarding ssh-rsa ty0...RPG foo
+IDENTITY=
+
+
+# Where to log
+LOG_FILE=/var/log/pitchnas-backup.log
+
+# Fill with list of exclude patterns to pass to rsync
+EXCLUDES_FILE=$CONFDIR/excludes
+
+# Directory of scripts to run before the rsync.
+# Runs anything executable, if any fail (status not 0) aborts the backup
+PRE_DIR=$CONFDIR/pre.d
+
+
+
+usage() {
+    echo Usage: $0 "[OPTIONS]"
+    echo
+    echo ' -n  Dry-run passed to rsync, ie no transfer'
+    echo ' -l  Write everything to stdout instead of logfile'
+    echo
+    echo CONFDIR:  $CONFDIR
+    echo LOG_FILE: $LOG_FILE
+    exit 0
+}
+
+#
+# Logging setup. Redirect stdout/stderr to to the log file, but save old stderr
+# and out to tmp ids 6 and 7 so we can restore.
+#
+stdio_redirected=false
+redirect_stdio() {
+    exec 6>&1         # link stdout to file descriptor 6
+    exec >> $LOG_FILE # stdout is now appending our log file
+    exec 7>&2         # link stdout to file descriptor 7
+    exec 2>&1         # stderr into stdout (logfile) as well
+    stdio_redirected=true
+}
+
+restore_stdio() {
+    if $stdio_redirected; then
+        # link stdout/stderr back to orig place and close tmp ids
+        exec 1>&6 6>&-
+        exec 2>&7 7>&-
+        stdio_redirected=false
+    fi
+}
+
+#
+# Util functions
+#
+
+info() {
+    echo '['$(date)']' "($$)" $@
+}
+
+give_up() {
+    if [ ! -z "$1" ]; then
+        info $@
+    fi
+    info Finished backup - FAIL
+
+    # Resore stdout and error and re output the error, so cron will mail someone
+    restore_stdio
+    if [ ! -z "$1" ]; then
+        echo $@
+    fi
+    echo Giving up! \(See $LOG_FILE for more\)
+
+    exit 23
+}
+
+
+# Load config, overriding defaults above.
+source "$CONFDIR/config"
+
+
+#
+# Parse cmd line options, overiding config file.
+#
+DRY=""
+use_log=true
+while getopts "h?nl" opt; do
+    case $opt in
+        '?'|h)
+            usage
+        ;;
+        n)
+            DRY="--dry-run"
+        ;;
+        l)
+            use_log=false
+        ;;
+    esac
+done
+
+if $use_log; then
+    redirect_stdio
+fi
+
+# Is it just us? One at a time please.
+# http://sysadvent.blogspot.com/2008/12/day-9-lock-file-practices.html
+if [ -z "$flock" ] ; then
+  lockopts="-w 0 $LOCK_FILE"
+  exec env flock=1 flock $lockopts $0 "$@"
+fi
+
+# Log after pid check to avoid double starting log line as we exec
+info Starting backup
+
+#
+# Pre-flight checks
+#
+
+# Are we root?
+if [ "$(id -u)" != "0" ]; then
+    give_up You don\'t have root!
+fi
+
+# Config ok
+if [ ! -r $CONFDIR ]; then
+    give_up Config dir $CONFDIR does not exist or is not readable.
+fi
+
+# Excludes file ok
+if [ ! -r $EXCLUDES_FILE ]; then
+    give_up Excludes file $EXCLUDES_FILE does not exist or is not readable.
+fi
+
+# Is our target rsync daemon ready to play?
+if $RSYNC_CMD "$RSYNC_HOST::" | grep -q "$RSYNC_MODULE"; then
+    info Using $RSYNC_HOST::$RSYNC_MODULE
+else
+    give_up "Can't connect to $RSYNC_HOST::$RSYNC_MODULE. Maybe host or network down, authentication failure?"
+fi
+
+#
+# Setup
+#
+
+RSYNC_TARGET="$RSYNC_HOST::$RSYNC_MODULE"
+
+# Tunnel the connection over ssh. Using the (passwordless) key.
+if [ ! -z "$IDENTITY" ]; then
+    export RSYNC_CONNECT_PROG="ssh $RSYNC_USER@$RSYNC_HOST -T -i $IDENTITY nc localhost 873"
+fi
+
+#
+# Pre backup scripts
+#
+# TODO: Export some env so they can see useful bits of the config
+# IDEA: Could source their output, which would allow them to fiddle with the
+# config, e.g. add extra excludes.
+if [ -d "$PRE_DIR" ]; then
+    for file in "$PRE_DIR"/*; do
+        if [ ! -x "$file" ]; then continue; fi
+        info Running pre script $file
+        if ! $file; then
+            give_up Pre script $file failed - $?
+        fi
+    done
+fi
+
+#
+# rsync time
+#
+
+# --compress --skip-compress=LIST
+# -A --acls  -a leaves this out, why?
+# --bwlimit=128   Needed on live servers
+RSYNC_OPTS="-a --hard-links --delete --delete-excluded --numeric-ids -v -h"
+SYS_EXCLUDE="--exclude /dev --exclude /proc --exclude /sys --exclude lost+found --exclude .zfs"
+
+cmd="$RSYNC_CMD $RSYNC_OPTS $DRY $SYS_EXCLUDE --exclude-from=$EXCLUDES_FILE / $RSYNC_TARGET"
+info $cmd
+$cmd
+err=$?
+if [ "$err" -ne "0" ]; then
+    give_up Rsync failed with error $err
+fi
+
+# This isn't needed to make the locking work, the flock stuff above is enough,
+# just being tidy.
+rm $LOCK_FILE
+
+info Finished backup - OK
+restore_stdio
+exit 0
