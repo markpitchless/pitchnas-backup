@@ -4,7 +4,7 @@ if [ -z "$PREFIX" ]; then
     PREFIX="/usr/local"
 fi
 if [ -z "$PITCHNAS_CONF_DIR" ]; then
-    PITCHNAS_CONF_DIR="$PREFIX/etc/pitchnas"
+    PITCHNAS_CONF_DIR="$PREFIX/etc/pitchnas-backup"
 fi
 
 install_opt="-v"

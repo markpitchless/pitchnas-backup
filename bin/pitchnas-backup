@@ -14,15 +14,14 @@
 # Where we can find config files and scripts
 case $(uname) in
     Linux)
-        CONFDIR=/etc/pitchnas-backup
         RSYNC_CMD=/usr/bin/rsync
     ;;
     *)
-        CONFDIR=/usr/local/etc/pitchnas-backup
         RSYNC_CMD=/usr/local/bin/rsync
     ;;
 esac
 
+CONFDIR=/usr/local/etc/pitchnas-backup
 LOCK_FILE="/tmp/pitchnas-backup.lock"
 
 # Target host for the backup.
